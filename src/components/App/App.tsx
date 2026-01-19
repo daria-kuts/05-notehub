@@ -1,64 +1,58 @@
 import { useState } from "react";
-import {
-  useQuery,
-  useMutation,
-  useQueryClient,
-} from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useDebounce } from "use-debounce";
+import type { FetchNotesResponse } from "../../services/noteService";
+
+import { fetchNotes } from "../../services/noteService";
+import type { Note } from "../../types/note";
+
+import NoteList from "../NoteList/NoteList";
+import Pagination from "../Pagination/Pagination";
+import SearchBox from "../SearchBox/SearchBox";
+import Modal from "../Modal/Modal";
+import NoteForm from "../NoteForm/NoteForm";
 import Loader from "../Loader/Loader";
 import ErrorMessage from "../ErrorMessage/ErrorMessage";
 
-import {
-  fetchNotes,
-  createNote,
-  type FetchNotesResponse,
-} from "../../services/noteService";
-
-import SearchBox from "../SearchBox/SearchBox";
-import NoteList from "../NoteList/NoteList";
-import Pagination from "../Pagination/Pagination";
-import Modal from "../Modal/Modal";
-import NoteForm from "../NoteForm/NoteForm";
-
 import css from "./App.module.css";
+
+const PER_PAGE = 12;
 
 export default function App() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
+  const [debouncedSearch] = useDebounce(search, 500);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  const [debouncedSearch] = useDebounce(search, 500);
-
-  const queryClient = useQueryClient();
-
   const { data, isLoading, isError } = useQuery<FetchNotesResponse>({
-    queryKey: ["notes", page, debouncedSearch],
-    queryFn: () =>
-      fetchNotes({
-        page,
-        perPage: 12,
-        search: debouncedSearch,
-      }),
-    placeholderData: (prev) => prev,
-  });
+  queryKey: ["notes", page, debouncedSearch],
+  queryFn: () =>
+    fetchNotes({
+      page,
+      perPage: PER_PAGE,
+      search: debouncedSearch || undefined,
+    }),
+  placeholderData: keepPreviousData,
+});
 
-  const createMutation = useMutation({
-    mutationFn: createNote,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["notes"] });
-      setIsModalOpen(false);
-    },
-  });
+
+  const notes: Note[] = data?.notes ?? [];
+  const totalPages = data?.totalPages ?? 0;
+
+  const handleSearchChange = (value: string) => {
+    setSearch(value);
+    setPage(1); 
+  };
 
   return (
     <div className={css.app}>
       <header className={css.toolbar}>
-        <SearchBox value={search} onChange={setSearch} />
+        <SearchBox value={search} onChange={handleSearchChange} />
 
-        {data && data.totalPages > 1 && (
+        {totalPages > 1 && (
           <Pagination
             page={page}
-            totalPages={data.totalPages}
+            totalPages={totalPages}
             onChange={setPage}
           />
         )}
@@ -74,19 +68,13 @@ export default function App() {
       {isLoading && <Loader />}
       {isError && <ErrorMessage />}
 
-
-      {}
-      {!isLoading && !isError && data && data.notes.length > 0 && (
-        <NoteList notes={data.notes} />
+      {!isLoading && !isError && notes.length > 0 && (
+        <NoteList notes={notes} />
       )}
 
-      {}
       {isModalOpen && (
         <Modal onClose={() => setIsModalOpen(false)}>
-          <NoteForm
-            onCancel={() => setIsModalOpen(false)}
-            onSubmit={(values) => createMutation.mutate(values)}
-          />
+          <NoteForm onCancel={() => setIsModalOpen(false)} />
         </Modal>
       )}
     </div>
